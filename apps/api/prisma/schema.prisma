@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  name String
+  passwordHash String
+  createdAt DateTime @default(now())
+  groups Group[]
+  reports Report[]
+  contentBlocks ContentBlock[]
+}
+
+model Group {
+  id String @id @default(cuid())
+  name String
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members GroupMember[]
+  reports Report[]
+  createdAt DateTime @default(now())
+}
+
+model GroupMember {
+  id String @id @default(cuid())
+  groupId String
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name String
+  email String
+  createdAt DateTime @default(now())
+  @@unique([groupId, email])
+}
+
+model ContentBlock {
+  id String @id @default(cuid())
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title String
+  category String
+  content Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  reportBlocks ReportBlock[]
+}
+
+model Report {
+  id String @id @default(cuid())
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  groupId String?
+  group Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  title String
+  status ReportStatus @default(DRAFT)
+  intro Json?
+  blocks ReportBlock[]
+  deliveries ReportDelivery[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReportBlock {
+  id String @id @default(cuid())
+  reportId String
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  contentBlockId String?
+  contentBlock ContentBlock? @relation(fields: [contentBlockId], references: [id], onDelete: SetNull)
+  title String
+  content Json
+  notes String?
+  position Int
+  @@unique([reportId, position])
+}
+
+model ReportDelivery {
+  id String @id @default(cuid())
+  reportId String
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  recipients Json
+  sentAt DateTime @default(now())
+  status String @default("QUEUED")
+}
+
+enum ReportStatus {
+  DRAFT
+  READY
+  SENT
+}
