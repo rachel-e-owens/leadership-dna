@@ -5,6 +5,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { Prisma, PrismaClient, ReportStatus } from '@prisma/client';
 import { z } from 'zod';
+import { renderPdf } from './pdf.js';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -72,6 +73,11 @@ app.put('/api/blocks/:id', auth, asyncRoute(async (req, res) => {
   if (!block) { res.status(404).json({ error: 'Content block not found' }); return; }
   res.json(await prisma.contentBlock.update({ where: { id: block.id }, data: input }));
 }));
+app.delete('/api/blocks/:id', auth, asyncRoute(async (req, res) => {
+  const result = await prisma.contentBlock.deleteMany({ where: { id: String(req.params.id), ownerId: req.userId! } });
+  if (!result.count) { res.status(404).json({ error: 'Content block not found' }); return; }
+  res.json({ deleted: true });
+}));
 app.post('/api/reports', auth, asyncRoute(async (req, res) => {
   const input = z.object({ title: z.string().min(1), groupId: z.string().optional() }).parse(req.body);
   if (input.groupId && !await prisma.group.findFirst({ where: { id: input.groupId, ownerId: req.userId } })) { res.status(404).json({ error: 'Group not found' }); return; }
@@ -80,6 +86,19 @@ app.post('/api/reports', auth, asyncRoute(async (req, res) => {
 app.get('/api/reports/:id', auth, asyncRoute(async (req, res) => {
   const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { group: { include: { members: true } }, blocks: { orderBy: { position: 'asc' } } } });
   if (!report) { res.status(404).json({ error: 'Report not found' }); return; } res.json(report);
+}));
+let activePdfExports = 0;
+app.post('/api/reports/:id/pdf', auth, asyncRoute(async (req, res) => {
+  const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { group: true, blocks: { orderBy: { position: 'asc' } } } });
+  if (!report) { res.status(404).json({ error: 'Report not found' }); return; }
+  const draft = z.object({ title: z.string().trim().min(1), blocks: z.array(z.object({ title: z.string().min(1), content: z.object({}).passthrough() })) }).optional().parse(req.body?.draft);
+  if (activePdfExports >= 2) { res.status(503).json({ error: 'PDF export is busy. Please try again shortly.' }); return; }
+  activePdfExports++;
+  try {
+    const pdf = await renderPdf({ ...report, ...draft });
+    const filename = ((draft?.title || report.title).replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 100) || 'report') + '.pdf';
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"`, 'Cache-Control': 'no-store' }).send(pdf);
+  } finally { activePdfExports--; }
 }));
 app.put('/api/reports/:id', auth, asyncRoute(async (req, res) => {
   const input = z.object({ title: z.string().min(1), intro: z.object({}).passthrough().nullable().optional(), status: z.nativeEnum(ReportStatus).optional(), blocks: z.array(z.object({ id: z.string().optional(), contentBlockId: z.string().nullable().optional(), title: z.string().min(1), content: z.object({}).passthrough(), notes: z.string().nullable().optional() })) }).parse(req.body);
