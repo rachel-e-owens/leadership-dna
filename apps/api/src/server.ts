@@ -40,28 +40,11 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/dashboard', auth, asyncRoute(async (req, res) => {
-  const [reports, groups, blocks] = await Promise.all([
-    prisma.report.findMany({ where: { ownerId: req.userId }, include: { group: true, _count: { select: { blocks: true } } }, orderBy: { updatedAt: 'desc' } }),
-    prisma.group.findMany({ where: { ownerId: req.userId }, include: { _count: { select: { members: true } } }, orderBy: { createdAt: 'desc' } }),
+  const [reports, blocks] = await Promise.all([
+    prisma.report.findMany({ where: { ownerId: req.userId }, include: { _count: { select: { blocks: true } } }, orderBy: { updatedAt: 'desc' } }),
     prisma.contentBlock.findMany({ where: { ownerId: req.userId }, orderBy: { updatedAt: 'desc' } })
   ]);
-  res.json({ reports, groups, blocks });
-}));
-app.post('/api/groups', auth, asyncRoute(async (req, res) => {
-  const input = z.object({ name: z.string().min(1), members: z.array(z.object({ name: z.string().min(1), email: z.string().email() })).default([]) }).parse(req.body);
-  const group = await prisma.group.create({ data: { name: input.name, ownerId: req.userId!, members: { create: input.members } }, include: { members: true } });
-  res.status(201).json(group);
-}));
-app.get('/api/groups/:id', auth, asyncRoute(async (req, res) => {
-  const group = await prisma.group.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { members: { orderBy: { name: 'asc' } }, reports: { orderBy: { updatedAt: 'desc' } } } });
-  if (!group) { res.status(404).json({ error: 'Group not found' }); return; }
-  res.json(group);
-}));
-app.put('/api/groups/:id', auth, asyncRoute(async (req, res) => {
-  const input = z.object({ name: z.string().min(1), members: z.array(z.object({ name: z.string().min(1), email: z.string().email() })).min(1) }).parse(req.body);
-  const group = await prisma.group.findFirst({ where: { id: String(req.params.id), ownerId: req.userId } });
-  if (!group) { res.status(404).json({ error: 'Group not found' }); return; }
-  res.json(await prisma.$transaction(async tx => { await tx.groupMember.deleteMany({ where: { groupId: group.id } }); return tx.group.update({ where: { id: group.id }, data: { name: input.name, members: { create: input.members } }, include: { members: true } }); }));
+  res.json({ reports, blocks });
 }));
 app.post('/api/blocks', auth, asyncRoute(async (req, res) => {
   const input = z.object({ title: z.string().min(1), category: z.string().min(1), content: z.object({}).passthrough() }).parse(req.body);
@@ -79,17 +62,16 @@ app.delete('/api/blocks/:id', auth, asyncRoute(async (req, res) => {
   res.json({ deleted: true });
 }));
 app.post('/api/reports', auth, asyncRoute(async (req, res) => {
-  const input = z.object({ title: z.string().min(1), groupId: z.string().optional() }).parse(req.body);
-  if (input.groupId && !await prisma.group.findFirst({ where: { id: input.groupId, ownerId: req.userId } })) { res.status(404).json({ error: 'Group not found' }); return; }
+  const input = z.object({ title: z.string().min(1) }).parse(req.body);
   res.status(201).json(await prisma.report.create({ data: { ...input, ownerId: req.userId! } }));
 }));
 app.get('/api/reports/:id', auth, asyncRoute(async (req, res) => {
-  const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { group: { include: { members: true } }, blocks: { orderBy: { position: 'asc' } } } });
+  const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { blocks: { orderBy: { position: 'asc' } } } });
   if (!report) { res.status(404).json({ error: 'Report not found' }); return; } res.json(report);
 }));
 let activePdfExports = 0;
 app.post('/api/reports/:id/pdf', auth, asyncRoute(async (req, res) => {
-  const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { group: true, blocks: { orderBy: { position: 'asc' } } } });
+  const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { blocks: { orderBy: { position: 'asc' } } } });
   if (!report) { res.status(404).json({ error: 'Report not found' }); return; }
   const draft = z.object({ title: z.string().trim().min(1), blocks: z.array(z.object({ title: z.string().min(1), content: z.object({}).passthrough() })) }).optional().parse(req.body?.draft);
   if (activePdfExports >= 2) { res.status(503).json({ error: 'PDF export is busy. Please try again shortly.' }); return; }
@@ -108,16 +90,6 @@ app.put('/api/reports/:id', auth, asyncRoute(async (req, res) => {
     await tx.reportBlock.deleteMany({ where: { reportId: found.id } });
     return tx.report.update({ where: { id: found.id }, data: { title: input.title, intro: input.intro === null ? Prisma.JsonNull : input.intro, status: input.status, blocks: { create: input.blocks.map(({ id: _id, ...block }, position) => ({ ...block, position })) }, }, include: { blocks: { orderBy: { position: 'asc' } } } });
   }); res.json(report);
-}));
-app.post('/api/reports/:id/send', auth, asyncRoute(async (req, res) => {
-  const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { group: { include: { members: true } } } });
-  if (!report?.group) { res.status(400).json({ error: 'Attach a group before sending a report' }); return; }
-  const recipients = report.group.members.map(({ name, email }) => ({ name, email }));
-  if (!recipients.length) { res.status(400).json({ error: 'This group has no recipients' }); return; }
-  // Replace this record-only implementation with Resend, Postmark, or SES in production.
-  const delivery = await prisma.reportDelivery.create({ data: { reportId: report.id, recipients, status: 'QUEUED' } });
-  await prisma.report.update({ where: { id: report.id }, data: { status: 'SENT' } });
-  res.status(202).json({ delivery, message: `Queued for ${recipients.length} recipient(s)` });
 }));
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) return res.status(400).json({ error: 'Invalid request', issues: err.issues });

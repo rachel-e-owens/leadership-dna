@@ -26,7 +26,7 @@ export function richText(value: unknown, depth = 0): string {
   return tag ? `<${tag}>${content || (tag === 'p' ? '<br>' : '')}</${tag}>` : content;
 }
 
-export type PdfReport = { title: string; intro?: unknown; group?: { name: string } | null; blocks: { title: string; content: unknown }[] };
+export type PdfReport = { title: string; intro?: unknown; blocks: { title: string; content: unknown }[] };
 export function reportHtml(report: PdfReport) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escape(report.title)}</title><style>
     * { box-sizing: border-box; } body { font: 11pt/1.6 Arial, sans-serif; color: #27272a; }
@@ -36,7 +36,7 @@ export function reportHtml(report: PdfReport) {
     p,li { overflow-wrap: anywhere; } blockquote { border-left: 3px solid #d4d4d8; padding-left: 16px; margin-left: 0; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f4f5; padding: 12px; } code { font-family: monospace; }
   </style></head><body><div class="brand">LEADERSHIP DNA REPORT</div><h1>${escape(report.title)}</h1>
-    ${report.group ? `<p>${escape(report.group.name)}</p>` : ''}${richText(report.intro)}
+    ${richText(report.intro)}
     ${report.blocks.map(block => `<article><h2>${escape(block.title)}</h2>${richText(block.content)}</article>`).join('')}
   </body></html>`;
 }

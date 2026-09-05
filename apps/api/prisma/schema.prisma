@@ -13,29 +13,8 @@ model User {
   name String
   passwordHash String
   createdAt DateTime @default(now())
-  groups Group[]
   reports Report[]
   contentBlocks ContentBlock[]
-}
-
-model Group {
-  id String @id @default(cuid())
-  name String
-  ownerId String
-  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members GroupMember[]
-  reports Report[]
-  createdAt DateTime @default(now())
-}
-
-model GroupMember {
-  id String @id @default(cuid())
-  groupId String
-  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  name String
-  email String
-  createdAt DateTime @default(now())
-  @@unique([groupId, email])
 }
 
 model ContentBlock {
@@ -54,8 +33,6 @@ model Report {
   id String @id @default(cuid())
   ownerId String
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  groupId String?
-  group Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   title String
   status ReportStatus @default(DRAFT)
   intro Json?
