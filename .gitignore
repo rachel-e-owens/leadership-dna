@@ -5,3 +5,5 @@ dist
 !.env.example
 coverage
 apps/api/prisma/dev.db
+
+backups/
