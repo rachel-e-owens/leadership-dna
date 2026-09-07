@@ -3,9 +3,10 @@ import bcrypt from 'bcryptjs';
 import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { Prisma, PrismaClient, ReportStatus } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { renderPdf } from './pdf.js';
+import { reportDraftSchema, reportUpdateSchema } from './report-input.js';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -69,11 +70,16 @@ app.get('/api/reports/:id', auth, asyncRoute(async (req, res) => {
   const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { blocks: { orderBy: { position: 'asc' } } } });
   if (!report) { res.status(404).json({ error: 'Report not found' }); return; } res.json(report);
 }));
+app.delete('/api/reports/:id', auth, asyncRoute(async (req, res) => {
+  const result = await prisma.report.deleteMany({ where: { id: String(req.params.id), ownerId: req.userId! } });
+  if (!result.count) { res.status(404).json({ error: 'Report not found' }); return; }
+  res.json({ deleted: true });
+}));
 let activePdfExports = 0;
 app.post('/api/reports/:id/pdf', auth, asyncRoute(async (req, res) => {
   const report = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId }, include: { blocks: { orderBy: { position: 'asc' } } } });
   if (!report) { res.status(404).json({ error: 'Report not found' }); return; }
-  const draft = z.object({ title: z.string().trim().min(1), blocks: z.array(z.object({ title: z.string().min(1), content: z.object({}).passthrough() })) }).optional().parse(req.body?.draft);
+  const draft = reportDraftSchema.optional().parse(req.body?.draft);
   if (activePdfExports >= 2) { res.status(503).json({ error: 'PDF export is busy. Please try again shortly.' }); return; }
   activePdfExports++;
   try {
@@ -83,16 +89,29 @@ app.post('/api/reports/:id/pdf', auth, asyncRoute(async (req, res) => {
   } finally { activePdfExports--; }
 }));
 app.put('/api/reports/:id', auth, asyncRoute(async (req, res) => {
-  const input = z.object({ title: z.string().min(1), intro: z.object({}).passthrough().nullable().optional(), status: z.nativeEnum(ReportStatus).optional(), blocks: z.array(z.object({ id: z.string().optional(), contentBlockId: z.string().nullable().optional(), title: z.string().min(1), content: z.object({}).passthrough(), notes: z.string().nullable().optional() })) }).parse(req.body);
+  const input = reportUpdateSchema.parse(req.body);
   const found = await prisma.report.findFirst({ where: { id: String(req.params.id), ownerId: req.userId } });
   if (!found) { res.status(404).json({ error: 'Report not found' }); return; }
+  // A legacy client must not silently replace a saved continuous document.
+  if (found.document && !input.document) { res.status(409).json({ error: 'Reload this report to use the continuous editor.' }); return; }
   const report = await prisma.$transaction(async tx => {
-    await tx.reportBlock.deleteMany({ where: { reportId: found.id } });
-    return tx.report.update({ where: { id: found.id }, data: { title: input.title, intro: input.intro === null ? Prisma.JsonNull : input.intro, status: input.status, blocks: { create: input.blocks.map(({ id: _id, ...block }, position) => ({ ...block, position })) }, }, include: { blocks: { orderBy: { position: 'asc' } } } });
+    if (!input.document && input.blocks) await tx.reportBlock.deleteMany({ where: { reportId: found.id } });
+    for (const note of input.blockNotes || []) {
+      await tx.reportBlock.updateMany({ where: { id: note.id, reportId: found.id }, data: { notes: note.notes } });
+    }
+    return tx.report.update({ where: { id: found.id }, data: {
+      title: input.title, intro: input.intro === null ? Prisma.JsonNull : input.intro, status: input.status,
+      document: input.document as Prisma.InputJsonValue | undefined,
+      documentStyle: input.documentStyle,
+      ...(!input.document && input.blocks ? { blocks: { create: input.blocks.map(({ id: _id, ...block }, position) => ({ ...block, position })) } } : {}),
+    }, include: { blocks: { orderBy: { position: 'asc' } } } });
   }); res.json(report);
 }));
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) return res.status(400).json({ error: 'Invalid request', issues: err.issues });
   console.error(err); res.status(500).json({ error: 'Unexpected server error' });
 });
-app.listen(port, () => console.log(`Leadership DNA API listening on http://localhost:${port}`));
+const server = app.listen(port, () => {
+  const address = server.address();
+  console.log(`Leadership DNA API listening on http://localhost:${typeof address === 'object' && address ? address.port : port}`);
+});

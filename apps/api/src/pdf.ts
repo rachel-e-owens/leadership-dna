@@ -1,15 +1,16 @@
 import { chromium } from 'playwright';
+import { defaultDocumentStyle, documentStyleSchema } from './report-input.js';
 
 const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 // Render only the editor's supported nodes; never interpolate arbitrary HTML or URLs.
 export function richText(value: unknown, depth = 0): string {
   if (!value || typeof value !== 'object' || depth > 100) return '';
-  const node = value as { type?: string; text?: string; content?: unknown[]; marks?: { type?: string }[]; attrs?: { level?: number; start?: number } };
+  const node = value as { type?: string; text?: string; content?: unknown[]; marks?: { type?: string }[]; attrs?: { level?: number; start?: number; textAlign?: string } };
   if (node.type === 'text') {
     let text = escape(typeof node.text === 'string' ? node.text : '');
     for (const mark of Array.isArray(node.marks) ? node.marks : []) {
-      const tag = ({ bold: 'strong', italic: 'em', strike: 's', code: 'code' } as Record<string, string>)[mark.type || ''];
+      const tag = ({ bold: 'strong', italic: 'em', strike: 's', code: 'code', underline: 'u' } as Record<string, string>)[mark.type || ''];
       if (tag) text = `<${tag}>${text}</${tag}>`;
     }
     return text;
@@ -17,17 +18,21 @@ export function richText(value: unknown, depth = 0): string {
   const content = Array.isArray(node.content) ? node.content.map(child => richText(child, depth + 1)).join('') : '';
   if (node.type === 'hardBreak') return '<br>';
   if (node.type === 'horizontalRule') return '<hr>';
+  const alignment = ['left', 'center', 'right', 'justify'].includes(node.attrs?.textAlign || '') ? ` style="text-align:${node.attrs!.textAlign}"` : '';
   if (node.type === 'heading') {
     const level = [1, 2, 3, 4, 5, 6].includes(node.attrs?.level || 0) ? node.attrs!.level : 2;
-    return `<h${level}>${content}</h${level}>`;
+    return `<h${level}${alignment}>${content}</h${level}>`;
   }
   if (node.type === 'orderedList') return `<ol start="${Number.isSafeInteger(node.attrs?.start) ? node.attrs!.start : 1}">${content}</ol>`;
   const tag = ({ paragraph: 'p', bulletList: 'ul', listItem: 'li', blockquote: 'blockquote', codeBlock: 'pre' } as Record<string, string>)[node.type || ''];
-  return tag ? `<${tag}>${content || (tag === 'p' ? '<br>' : '')}</${tag}>` : content;
+  return tag ? `<${tag}${tag === 'p' ? alignment : ''}>${content || (tag === 'p' ? '<br>' : '')}</${tag}>` : content;
 }
 
-export type PdfReport = { title: string; intro?: unknown; blocks: { title: string; content: unknown }[] };
+export type PdfReport = { title: string; intro?: unknown; document?: unknown; documentStyle?: unknown; blocks: { title: string; content: unknown }[] };
 export function reportHtml(report: PdfReport) {
+  const parsedStyle = documentStyleSchema.safeParse(report.documentStyle);
+  const style = parsedStyle.success ? parsedStyle.data : defaultDocumentStyle;
+  const continuous = !!report.document;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escape(report.title)}</title><style>
     * { box-sizing: border-box; } body { font: 11pt/1.6 Arial, sans-serif; color: #27272a; }
     .brand { font-size: 9pt; letter-spacing: 2px; color: #71717a; } h1 { font-size: 28pt; line-height: 1.15; margin: 16px 0; }
@@ -35,9 +40,14 @@ export function reportHtml(report: PdfReport) {
     article { border-top: 1px solid #d4d4d8; margin-top: 26px; padding-top: 12px; }
     p,li { overflow-wrap: anywhere; } blockquote { border-left: 3px solid #d4d4d8; padding-left: 16px; margin-left: 0; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f4f5; padding: 12px; } code { font-family: monospace; }
-  </style></head><body><div class="brand">LEADERSHIP DNA REPORT</div><h1>${escape(report.title)}</h1>
+    ${continuous ? `body { font: ${style.fontSize}pt/${style.lineHeight} "${style.fontFamily}", sans-serif; color: ${style.color}; }
+    h1,h2,h3,h4,h5,h6 { line-height: 1.2; margin: 1em 0 .5em; font-weight: 600; }
+    h1 { font-size: 2.5em; } h2 { font-size: 1.55em; } h3 { font-size: 1.25em; } h4,h5,h6 { font-size: 1.1em; }
+    p { margin: 0 0 .8em; } ul,ol { padding-left: 24px; margin: 1em 0; }
+    blockquote { margin: 1em 0; } hr { border: 0; border-top: 1px solid #d4d4d8; margin: 24px 0; }` : ''}
+  </style></head><body>${continuous ? richText(report.document) : `<div class="brand">LEADERSHIP DNA REPORT</div><h1>${escape(report.title)}</h1>
     ${richText(report.intro)}
-    ${report.blocks.map(block => `<article><h2>${escape(block.title)}</h2>${richText(block.content)}</article>`).join('')}
+    ${report.blocks.map(block => `<article><h2>${escape(block.title)}</h2>${richText(block.content)}</article>`).join('')}`}
   </body></html>`;
 }
 

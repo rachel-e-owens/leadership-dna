@@ -29,3 +29,22 @@ test('Chromium generates a PDF', async () => {
     await writeFile(process.env.PDF_TEST_OUTPUT, sample);
   }
 });
+
+test('continuous reports render edited text and styling without duplicated legacy content', () => {
+  const html = reportHtml({ title: 'File name', documentStyle: { fontFamily: 'Georgia', fontSize: 14, lineHeight: 2, color: '#123456' }, document: { type: 'doc', content: [
+    { type: 'heading', attrs: { level: 1, textAlign: 'center' }, content: [{ type: 'text', text: 'Edited title' }] },
+    { type: 'paragraph', attrs: { textAlign: 'right' }, content: [{ type: 'text', text: 'Personalized text', marks: [{ type: 'underline' }] }] },
+  ] }, blocks: [{ title: 'Old block', content: { type: 'text', text: 'Old text' }, notes: 'PRIVATE' } as any] });
+  assert.ok(html.includes('<h1 style="text-align:center">Edited title</h1>'));
+  assert.ok(html.includes('<p style="text-align:right"><u>Personalized text</u></p>'));
+  assert.ok(html.includes('14pt/2 "Georgia"'));
+  assert.ok(html.includes('color: #123456'));
+  for (const excluded of ['Old block', 'Old text', 'PRIVATE', '<h1>File name</h1>']) assert.ok(!html.includes(excluded));
+});
+
+test('PDF styles reject injected CSS and an empty document stays empty', () => {
+  const html = reportHtml({ title: 'File', document: { type: 'doc', content: [] }, documentStyle: { fontFamily: '</style><script>evil</script>' }, blocks: [{ title: 'Do not restore', content: {} }] });
+  assert.ok(!html.includes('evil'));
+  assert.ok(!html.includes('Do not restore'));
+  assert.equal(richText({ type: 'paragraph', attrs: { textAlign: 'left; background: url(https://evil)' }, content: [{ type: 'text', text: 'Safe' }] }), '<p>Safe</p>');
+});

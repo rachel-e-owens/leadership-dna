@@ -36,6 +36,8 @@ model Report {
   title String
   status ReportStatus @default(DRAFT)
   intro Json?
+  document Json?
+  documentStyle Json?
   blocks ReportBlock[]
   deliveries ReportDelivery[]
   createdAt DateTime @default(now())

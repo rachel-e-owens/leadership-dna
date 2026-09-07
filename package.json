@@ -2,12 +2,17 @@
   "name": "leadership-dna-report-builder",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,magenta \"npm run dev -w @leadership-dna/api\" \"npm run dev -w @leadership-dna/web\"",
     "build": "npm run build --workspaces",
     "db:generate": "npm run prisma:generate -w @leadership-dna/api",
-    "db:migrate": "npm run prisma:migrate -w @leadership-dna/api"
+    "db:migrate": "npm run prisma:migrate -w @leadership-dna/api",
+    "test": "npm run test --workspaces"
   },
-  "devDependencies": { "concurrently": "^9.1.2" }
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
 }

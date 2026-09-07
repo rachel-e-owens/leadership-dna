@@ -29,3 +29,35 @@
     @apply pointer-events-none float-left h-0 text-zinc-400;
   }
 }
+
+.document-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; max-width: 1200px; margin: auto; align-items: start; }
+.document-workspace .library-panel { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
+.library-block { border: 1px solid #d4d4d8; background: white; border-radius: 8px; padding: 12px; text-align: left; overflow-wrap: anywhere; }
+.library-block small { display: block; margin-bottom: 4px; }
+.library-block:hover { border-color: #71717a; }
+.insert-paragraph { background: #18181b; color: white; padding: 10px; border-radius: 8px; font-size: 14px; }
+.document-panel { min-width: 0; border: 1px solid #d4d4d8; border-radius: 12px; background: white; overflow: hidden; }
+.document-style, .document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid #e4e4e7; padding: 12px; background: #fafafa; }
+.document-style label { margin: 0; gap: 4px; font-size: 12px; }
+.document-style select, .document-toolbar select, .document-toolbar button { border: 1px solid #d4d4d8; border-radius: 5px; background: white; padding: 6px 8px; font-size: 13px; }
+.document-toolbar button[aria-pressed="true"] { background: #e4e4e7; border-color: #71717a; }
+.document-style input[type="color"] { width: 44px; height: 33px; padding: 3px; }
+.document-page { padding: 36px 48px; min-height: 750px; }
+.document-page .ProseMirror { min-height: 675px; padding: 0; font: inherit; color: inherit; overflow-wrap: anywhere; }
+.document-page .ProseMirror p { font: inherit; color: inherit; margin: 0 0 0.8em; }
+.document-page .ProseMirror :is(h1,h2,h3,h4,h5,h6) { color: inherit; line-height: 1.2; margin: 1em 0 .5em; font-weight: 600; letter-spacing: normal; }
+.document-page .ProseMirror h1 { font-size: 2.5em; }
+.document-page .ProseMirror h2 { font-size: 1.55em; }
+.document-page .ProseMirror h3 { font-size: 1.25em; }
+.document-page .ProseMirror :is(h4,h5,h6) { font-size: 1.1em; }
+.document-page .ProseMirror blockquote { color: inherit; border-left: 3px solid #d4d4d8; padding-left: 16px; margin: 1em 0; }
+.document-page .ProseMirror :is(ul,ol) { margin: 1em 0; padding-left: 24px; }
+.document-page .ProseMirror hr { border: 0; border-top: 1px solid #d4d4d8; margin: 24px 0; }
+.facilitator-notes { border-top: 1px solid #e4e4e7; background: #fafafa; padding: 16px; font-size: 14px; }
+.facilitator-notes summary { cursor: pointer; }
+@media (max-width: 800px) {
+  .document-workspace { grid-template-columns: minmax(0, 1fr); }
+  .document-workspace .library-panel { position: static; max-height: 240px; }
+  .document-page { padding: 24px 20px; }
+}
+.document-page .ProseMirror pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f4f5; padding: 12px; }
