@@ -20,6 +20,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 RUN npm ci --workspace=@leadership-dna/api --include-workspace-root=false
 
 COPY --from=build /app/node_modules/.prisma /app/node_modules/.prisma
