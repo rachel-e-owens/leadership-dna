@@ -27,7 +27,7 @@ test('saved document is authoritative, including intentional deletion of all tex
   const blank = { type: 'doc', content: [] };
   assert.deepEqual(reportDocument({ ...original, document: blank }), blank);
 });
-test('export drafts include current text and styling but exclude legacy snapshots and notes', () => {
+test('save drafts include current text and styling but exclude legacy snapshots and notes', () => {
   const documentStyle = { fontFamily: 'Georgia' as const, fontSize: 14, lineHeight: 2, color: '#123456' };
   const draft = reportDraft({ ...original, document: { type: 'doc', content: [paragraph('Unsaved edit')] }, documentStyle });
   assert.equal(draft.document.content![0].content![0].text, 'Unsaved edit');

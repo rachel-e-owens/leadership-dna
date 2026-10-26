@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Restrict styles to values that can safely be shared by the editor and PDF.
+// Restrict report styles to supported editor values.
 export const documentStyleSchema = z.object({
   fontFamily: z.enum(['Arial', 'Georgia', 'Verdana', 'Times New Roman']),
   fontSize: z.number().int().min(9).max(24),
@@ -32,12 +32,6 @@ export const documentSchema = z.object({ type: z.literal('doc'), content: z.arra
   }
 });
 const blockSchema = z.object({ id: z.string().optional(), contentBlockId: z.string().nullable().optional(), title: z.string().min(1), content: z.object({}).passthrough(), notes: z.string().nullable().optional() });
-export const reportDraftSchema = z.object({
-  title: z.string().trim().min(1),
-  document: documentSchema.optional(),
-  documentStyle: documentStyleSchema.optional(),
-  blocks: z.array(blockSchema).optional(),
-}).refine(input => input.document !== undefined || input.blocks !== undefined, 'Report content is required');
 export const reportUpdateSchema = z.object({
   title: z.string().trim().min(1),
   document: documentSchema.optional(),

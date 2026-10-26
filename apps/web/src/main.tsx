@@ -23,67 +23,6 @@ async function request(path: string, token?: string, options: RequestInit = {}) 
   return data;
 }
 
-async function fetchReportPdf(reportId: string, token: string, body: string, signal?: AbortSignal) {
-  const response = await fetch(`${API}/reports/${reportId}/pdf`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body, signal,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.error || 'Unable to generate the PDF. Please try again.');
-  }
-  if (!response.headers.get('content-type')?.includes('application/pdf')) throw new Error('The server did not return a PDF. Please try again.');
-  return response.blob();
-}
-
-function ReportPreview({ report, token }: { report: Report; token: string }) {
-  const [url, setUrl] = useState(''), [busy, setBusy] = useState(true), [error, setError] = useState('');
-  const [retry, setRetry] = useState(0);
-  // Private notes and database IDs do not affect the exported document.
-  const body = JSON.stringify({ draft: reportDraft(report) });
-  useEffect(() => {
-    const controller = new AbortController();
-    let objectUrl = '';
-    setBusy(true); setError(''); setUrl('');
-    const timer = window.setTimeout(async () => {
-      try {
-        const pdf = await fetchReportPdf(report.id, token, body, controller.signal);
-        if (controller.signal.aborted) return;
-        objectUrl = URL.createObjectURL(pdf);
-        setUrl(objectUrl);
-      } catch (e) {
-        if (!controller.signal.aborted) setError((e as Error).message);
-      } finally {
-        if (!controller.signal.aborted) setBusy(false);
-      }
-    }, 800);
-    return () => { window.clearTimeout(timer); controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [report.id, token, body, retry]);
-  return <aside aria-label="PDF preview" className="min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white lg:sticky lg:top-6">
-    <div className="border-b border-zinc-200 p-4"><h2 className="text-base">PDF preview</h2><p className="mt-1">Read-only · Complete report · Updates as you edit</p></div>
-    {busy && <p role="status" className="p-6">Preparing PDF preview…</p>}
-    {error && <div className="p-6"><p role="alert" className="text-red-700">{error}</p><button type="button" className="mt-3 rounded-lg border border-zinc-300 px-3 py-2 text-sm" onClick={() => setRetry(value => value + 1)}>Retry preview</button></div>}
-    {url && <><iframe title="Complete report PDF preview" src={`${url}#toolbar=0&navpanes=0&view=FitH`} className="h-[75vh] min-h-[480px] w-full border-0" /><p className="px-4 py-3">Preview not displaying? <a className="underline" href={url} target="_blank" rel="noreferrer">Open PDF in a new tab</a></p></>}
-  </aside>;
-}
-
-function ExportButton({ report, token, draft = false }: { report: Report; token: string; draft?: boolean }) {
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  async function download() {
-    if (busy) return;
-    setBusy(true); setError('');
-    try {
-      const pdf = await fetchReportPdf(report.id, token, JSON.stringify(draft ? { draft: reportDraft(report) } : {}));
-      const url = URL.createObjectURL(pdf);
-      const link = document.createElement('a');
-      link.href = url; link.download = `${report.title.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 100) || 'report'}.pdf`;
-      document.body.appendChild(link); link.click(); link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
-  }
-  return <div><button type="button" disabled={busy} aria-label={`Export ${report.title} to PDF`} className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-50" onClick={download}>{busy ? 'Exporting…' : 'Export PDF'}</button>{error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}</div>;
-}
-
 function RichEditor({ value, onChange, placeholder }: { value: any; onChange: (value: any) => void; placeholder: string }) {
   const editor = useEditor({ extensions: [StarterKit, Placeholder.configure({ placeholder })], content: value || doc(), onUpdate: ({ editor }) => onChange(editor.getJSON()) });
   useEffect(() => { if (editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(value)) editor.commands.setContent(value || doc(), false); }, [editor, value]);
@@ -99,7 +38,6 @@ function Auth({ onAuth }: { onAuth: (token: string) => void }) {
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('ld_token') || ''), [data, setData] = useState<Dashboard | null>(null), [view, setView] = useState<'reports' | 'library' | 'editor'>('reports'), [report, setReport] = useState<Report | null>(null), [notice, setNotice] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
   const editRevision = useRef(0);
   function editReport(change: Partial<Report>) { editRevision.current++; setReport(current => current ? { ...current, ...change } : current); setNotice('Unsaved changes'); }
   const [reportAction, setReportAction] = useState<'saving' | 'deleting' | null>(null);
@@ -136,7 +74,7 @@ function App() {
   function createBlock() { window.dispatchEvent(new Event('content-library:open-form')); }
   const nav = <nav aria-label="Main navigation" className="flex w-full items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-5 py-3 sm:px-8 [&>*]:shrink-0 [&_button]:whitespace-nowrap"><div className="mr-4 flex items-center gap-1 text-lg font-semibold tracking-tight text-zinc-950">LD<span>•</span></div><button className={view === 'reports' ? 'rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950' : 'rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950'} onClick={() => setView('reports')}>Reports</button><button className={view === 'library' ? 'rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950' : 'rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950'} onClick={() => setView('library')}>Content library</button><button className="ml-auto rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950" onClick={() => { localStorage.removeItem('ld_token'); setToken(''); }}>Sign out</button></nav>;
   if (!token) return <Auth onAuth={setToken} />; if (!data) return <p className="p-12 text-sm text-zinc-500">Loading your workspace…</p>;
-  if (view === 'editor' && report) return <div className="min-h-screen">{nav}<main className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-8 sm:py-12"><header className="mb-8 flex flex-wrap items-center justify-between gap-4"><button className="inline-flex py-2 text-sm font-medium text-zinc-600 underline-offset-4 hover:text-zinc-950 hover:underline" onClick={() => { setView('reports'); load(); }}>← All reports</button><input className="min-w-0 w-full rounded-lg border-transparent bg-transparent px-0 text-2xl font-semibold tracking-tight sm:w-auto" aria-label="Report name" value={report.title} onChange={e => editReport({ title: e.target.value })}/><div className="flex flex-wrap gap-2"><ExportButton report={report} token={token} draft /><button type="button" className="rounded-lg border border-zinc-300 px-4 py-2 text-sm" aria-pressed={showPreview} onClick={() => setShowPreview(value => !value)}>{showPreview ? 'Hide PDF preview' : 'Show PDF preview'}</button><button className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100" disabled={!!reportAction} onClick={saveReport}>{reportAction === 'saving' ? 'Saving…' : 'Save'}</button><button type="button" className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50" disabled={!!reportAction} onClick={deleteReport}>{reportAction === 'deleting' ? 'Deleting…' : 'Delete'}</button></div></header>{notice && <p className="mb-6 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">{notice}</p>}<ReportEditor key={report.id} report={report} library={data.blocks} onChange={editReport} />{showPreview && <div className="mx-auto mt-6 max-w-4xl"><ReportPreview key={report.id} report={report} token={token} /></div>}</main></div>;
+  if (view === 'editor' && report) return <div className="min-h-screen">{nav}<main className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-8 sm:py-12"><header className="mb-8 flex flex-wrap items-center justify-between gap-4"><button className="inline-flex py-2 text-sm font-medium text-zinc-600 underline-offset-4 hover:text-zinc-950 hover:underline" onClick={() => { setView('reports'); load(); }}>← All reports</button><input className="min-w-0 w-full rounded-lg border-transparent bg-transparent px-0 text-2xl font-semibold tracking-tight sm:w-auto" aria-label="Report name" value={report.title} onChange={e => editReport({ title: e.target.value })}/><div className="flex flex-wrap gap-2"><button className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100" disabled={!!reportAction} onClick={saveReport}>{reportAction === 'saving' ? 'Saving…' : 'Save'}</button><button type="button" className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50" disabled={!!reportAction} onClick={deleteReport}>{reportAction === 'deleting' ? 'Deleting…' : 'Delete'}</button></div></header>{notice && <p className="mb-6 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">{notice}</p>}<ReportEditor key={report.id} report={report} library={data.blocks} onChange={editReport} /></main></div>;
   return <div className="min-h-screen">{nav}<main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12"><header className="mb-8 flex flex-wrap items-center justify-between gap-4"><div><p className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">WORKSPACE</p><h1>{view === 'reports' ? 'Your reports' : 'Content library'}</h1></div>{view === 'reports' && <button className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700" onClick={newReport}>+ New report</button>}{view === 'library' && <button className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700" onClick={createBlock}>+ Add new content block</button>}</header>{view === 'reports' && <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{data.reports.map(r => <article className="min-w-0" key={r.id}><button className="flex h-48 w-full min-w-0 flex-col items-start rounded-xl border border-zinc-200 bg-white p-6 text-left transition hover:border-zinc-400 hover:shadow-sm " key={r.id} onClick={() => openReport(r.id)}><h2 className="my-3 line-clamp-2 w-full break-words text-left" title={r.title}>{r.title}</h2><p className="mt-auto">Open report</p></button></article>)}{!data.reports.length && <div className="col-span-full rounded-xl border border-dashed border-zinc-300 px-6 py-16 text-center text-sm text-zinc-500">No reports yet. Create your first one to begin.</div>}</section>}{view === 'library' && <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{data.blocks.map(b => <article className="content-card min-w-0 cursor-pointer rounded-xl border border-zinc-200 bg-white p-6 text-left transition hover:border-zinc-400 hover:shadow-sm [&_h2]:my-3 [&_h2]:break-words" data-block-id={b.id} key={b.id}><small>{b.category}</small><h2>{b.title}</h2><p>Reusable report content</p></article>)}</section>}</main></div>;
 }
 

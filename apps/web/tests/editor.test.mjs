@@ -16,17 +16,14 @@ test('continuous editor inserts at cursor, preserves originals, formats, saves a
     page.on('pageerror', error => errors.push(error.message));
     const library = { id: 'library', title: 'Strengths', category: 'Profile', content: { type: 'doc', content: [paragraph('Original reusable text')] } };
     let saved = { id: 'report', title: 'Client report', intro: { type: 'doc', content: [paragraph('BeforeAfter')] }, blocks: [{ id: 'legacy', title: 'Legacy section', content: { type: 'doc', content: [paragraph('Existing report text')] }, notes: 'Private note' }] };
-    const writes = [], exports = [];
+    const writes = [];
     await page.route('**/api/**', async route => {
       const request = route.request(), url = new URL(request.url());
       const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS' };
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
       let body;
       if (url.pathname === '/api/dashboard') body = { reports: [{ ...saved, _count: { blocks: saved.blocks.length } }], blocks: [library] };
-      else if (url.pathname.endsWith('/pdf')) {
-        exports.push(request.postDataJSON());
-        return route.fulfill({ status: 200, contentType: 'application/pdf', headers, body: '%PDF-1.4\n%%EOF' });
-      } else if (url.pathname === '/api/reports/report' && request.method() === 'PUT') {
+      else if (url.pathname === '/api/reports/report' && request.method() === 'PUT') {
         const update = request.postDataJSON();
         writes.push(update);
         saved = { ...saved, ...update, blocks: saved.blocks.map(block => ({ ...block, notes: update.blockNotes.find(note => note.id === block.id)?.notes ?? block.notes })) };
@@ -72,11 +69,6 @@ test('continuous editor inserts at cursor, preserves originals, formats, saves a
     await page.getByLabel('Report text color').fill('#123456');
     await page.getByText('Private facilitator notes · excluded from the report').click();
     await page.getByLabel('Private notes: Legacy section').fill('Updated private note');
-    await page.getByRole('button', { name: 'Export Client report to PDF' }).click();
-    await page.waitForFunction(() => !document.querySelector('button[aria-label="Export Client report to PDF"]')?.disabled);
-    assert.equal(exports.length, 1);
-    assert.ok(JSON.stringify(exports[0]).includes('Personalized client text'));
-    assert.ok(!JSON.stringify(exports[0]).includes('private note'));
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await page.getByText('Saved', { exact: true }).waitFor();
     assert.equal(writes.length, 1);
