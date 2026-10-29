@@ -51,6 +51,14 @@ test('real API saves documents without changing library originals or legacy bloc
     const other = (await call('/auth/register', 'POST', { name: 'Other user', email: 'other@example.test', password: 'other-test-password' })).body.token;
     assert.equal((await call(`/reports/${report.id}`, 'PUT', { title: 'Not mine', document }, other)).status, 404);
     const otherReport = (await call('/reports', 'POST', { title: 'Other report' }, other)).body;
+    assert.equal((await call(`/reports/${report.id}`, 'GET', undefined, other)).status, 404);
+    assert.equal((await call(`/reports/${report.id}`, 'DELETE', undefined, other)).status, 404);
+    assert.equal((await call(`/blocks/${library.id}`, 'PUT', { title: 'Intrusion', category: 'Profile', content }, other)).status, 404);
+    assert.equal((await call(`/blocks/${library.id}`, 'DELETE', undefined, other)).status, 404);
+    assert.equal((await call('/dashboard', 'GET', undefined, other)).body.blocks.length, 0);
+    assert.equal((await call(`/reports/${otherReport.id}`, 'PUT', { title: 'Other report', blocks: [{ contentBlockId: library.id, title: 'Foreign library', content }] }, other)).status, 404);
+    assert.equal((await call(`/blocks/${library.id}`, 'PUT', { title: 'Updated strengths', category: 'Profile', content }, token)).status, 200);
+
     // A note ID alone cannot grant access to another report's private notes.
     assert.equal((await call(`/reports/${otherReport.id}`, 'PUT', { title: 'Other report', document, blockNotes: [{ id: block.id, notes: 'Intrusion' }] }, other)).status, 200);
     assert.equal((await prisma.reportBlock.findUniqueOrThrow({ where: { id: block.id } })).notes, 'Updated private note');

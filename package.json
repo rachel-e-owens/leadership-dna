@@ -10,7 +10,8 @@
     "build": "npm run build --workspaces",
     "db:generate": "npm run prisma:generate -w @leadership-dna/api",
     "db:migrate": "npm run prisma:migrate -w @leadership-dna/api",
-    "test": "npm run test --workspaces"
+    "test": "npm run test --workspaces",
+    "db:rehearse": "node scripts/rehearse-database.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

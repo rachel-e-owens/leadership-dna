@@ -24,7 +24,7 @@ The database is kept in the `postgres_data` Docker volume, so your data remains 
 
 ### Optional configuration
 
-The defaults are ready for local use. To change the browser port, database password, or JWT secret, copy [`.env.example`](.env.example) to `.env`, update its values, and run the same command. `APP_PORT` defaults to `8080`.
+The defaults are ready for local demo use. Production requires explicit credentials and disables demo seeding; see [deployment configuration](docs/operations.md). To change the browser port, database password, or JWT secret, copy [`.env.example`](.env.example) to `.env`, update its values, and run the same command. `APP_PORT` defaults to `8080`.
 
 ### Local development without Docker
 
@@ -44,8 +44,25 @@ Run `npm test` to check conversion, independent block copies, input validation, 
 
 To also run the real API/database persistence test, set `TEST_DATABASE_URL` to a disposable PostgreSQL database and run `npm run test -w @leadership-dna/api`. That test applies migrations in a unique temporary schema, exercises authenticated API requests, verifies preservation of original blocks and private notes, checks report ownership, and drops only its temporary schema afterward. Without `TEST_DATABASE_URL`, the database test is skipped.
 
-## Groups archive
+## Groups and member invitations
 
-The `groups` Git branch preserves the app with client groups and group emailing. The main app now creates standalone reports. Historical delivery records remain in the database.
+Open **Groups** to manage engagements and invite members. Members accept a private
+link, sign in, and see their own empty forms/report dashboard. See the
+[Phase 1 workflow and migration guide](docs/groups-and-invitations.md) for email
+setup, permissions, and acceptance tests.
+
+## Historical groups archive
+
+The `groups` Git branch preserves the app with client groups and group emailing. The current app preserves standalone reports; the new group membership workflow is described above. Historical delivery records remain in the database.
 
 The removal migration drops group membership data and report-to-group associations while preserving reports and content blocks. Back up an existing database before applying migrations; switching Git branches does not restore database data.
+
+## Foundation and operations
+
+- [Current architecture and API protections](docs/architecture.md)
+- [Local and production configuration](docs/operations.md)
+- [Database backup, recovery, and disposable rehearsal](docs/backup-restore.md)
+
+Run `npm run db:rehearse` with Docker available to verify migration deployment,
+backup/restore integrity, and real API persistence and ownership isolation against
+a disposable PostgreSQL 16 instance.

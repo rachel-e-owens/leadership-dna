@@ -30,6 +30,8 @@ COPY apps/api/prisma apps/api/prisma
 
 WORKDIR /app/apps/api
 
+ENV NODE_ENV=production
+
 EXPOSE 4000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run prisma:seed && npm start"]
+CMD ["sh", "-c", "node dist/src/check-config.js && npx prisma migrate deploy && if [ \"$SEED_DEMO\" = \"true\" ]; then npm run prisma:seed; fi && npm start"]

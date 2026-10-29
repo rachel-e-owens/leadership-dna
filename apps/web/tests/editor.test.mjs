@@ -22,7 +22,8 @@ test('continuous editor inserts at cursor, preserves originals, formats, saves a
       const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS' };
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
       let body;
-      if (url.pathname === '/api/dashboard') body = { reports: [{ ...saved, _count: { blocks: saved.blocks.length } }], blocks: [library] };
+      if (url.pathname === '/api/me') body = { user: { id: 'consultant', name: 'Consultant', role: 'CONSULTANT' } };
+      else if (url.pathname === '/api/dashboard') body = { reports: [{ ...saved, _count: { blocks: saved.blocks.length } }], blocks: [library] };
       else if (url.pathname === '/api/reports/report' && request.method() === 'PUT') {
         const update = request.postDataJSON();
         writes.push(update);

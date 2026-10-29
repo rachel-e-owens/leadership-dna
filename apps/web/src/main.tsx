@@ -7,22 +7,11 @@ import './styles.css';
 import { ReportEditor } from './ReportEditor';
 import { reportDocument, reportDraft, defaultDocumentStyle } from './report-document';
 import type { Report } from './report-document';
+import { request } from './api';
+import { Groups, InvitationAcceptance, MemberDashboard } from './Groups';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 type Dashboard = { reports: (Report & { _count: { blocks: number } })[]; blocks: { id: string; title: string; category: string; content: any }[] };
 const doc = (text = '') => ({ type: 'doc', content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [{ type: 'paragraph' }] });
-async function request(path: string, token?: string, options: RequestInit = {}) {
-  const r = await fetch(`${API}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers } });
-  if (!r.headers.get('content-type')?.includes('application/json')) {
-    throw new Error(r.status >= 500
-      ? 'The server is temporarily unavailable. Please try again in a moment.'
-      : 'The server returned an unexpected response. Please refresh and try again.');
-  }
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'Something went wrong');
-  return data;
-}
-
 function RichEditor({ value, onChange, placeholder }: { value: any; onChange: (value: any) => void; placeholder: string }) {
   const editor = useEditor({ extensions: [StarterKit, Placeholder.configure({ placeholder })], content: value || doc(), onUpdate: ({ editor }) => onChange(editor.getJSON()) });
   useEffect(() => { if (editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(value)) editor.commands.setContent(value || doc(), false); }, [editor, value]);
@@ -37,12 +26,16 @@ function Auth({ onAuth }: { onAuth: (token: string) => void }) {
 }
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('ld_token') || ''), [data, setData] = useState<Dashboard | null>(null), [view, setView] = useState<'reports' | 'library' | 'editor'>('reports'), [report, setReport] = useState<Report | null>(null), [notice, setNotice] = useState('');
+  const [token, setToken] = useState(localStorage.getItem('ld_token') || ''), [data, setData] = useState<Dashboard | null>(null), [view, setView] = useState<'reports' | 'library' | 'editor' | 'groups' | 'member'>('reports'), [report, setReport] = useState<Report | null>(null), [notice, setNotice] = useState('');
+  const [user, setUser] = useState<{ name: string; role: 'CONSULTANT' | 'MEMBER' } | null>(null);
+  const [invite, setInvite] = useState(() => new URLSearchParams(location.hash.slice(1)).get('invite') || '');
+  useEffect(() => { const change = () => setInvite(new URLSearchParams(location.hash.slice(1)).get('invite') || ''); window.addEventListener('hashchange', change); return () => window.removeEventListener('hashchange', change); }, []);
+  function signOut() { localStorage.removeItem('ld_token'); setToken(''); setUser(null); setData(null); setReport(null); setView('reports'); }
   const editRevision = useRef(0);
   function editReport(change: Partial<Report>) { editRevision.current++; setReport(current => current ? { ...current, ...change } : current); setNotice('Unsaved changes'); }
   const [reportAction, setReportAction] = useState<'saving' | 'deleting' | null>(null);
-  const load = async () => { if (!token) return; try { setData(await request('/dashboard', token)); } catch { localStorage.removeItem('ld_token'); setToken(''); } };
-  useEffect(() => { load(); }, [token]);
+  const load = async () => { if (!token || invite) return; try { const result = await request('/me', token); setUser(result.user); if (result.user.role === 'CONSULTANT') setData(await request('/dashboard', token)); } catch (error) { setNotice((error as Error).message); } };
+  useEffect(() => { load(); }, [token, invite]);
   useEffect(() => { const refresh = () => { load(); }; window.addEventListener('content-library:changed', refresh); return () => window.removeEventListener('content-library:changed', refresh); }, [token]);
   async function newReport() { const title = window.prompt('Report title', 'Leadership DNA Report'); if (!title) return; const r = await request('/reports', token, { method: 'POST', body: JSON.stringify({ title }) }); await openReport(r.id); }
   async function openReport(id: string) { const loaded = await request(`/reports/${id}`, token); editRevision.current++; setReport({ ...loaded, document: reportDocument(loaded), documentStyle: loaded.documentStyle || defaultDocumentStyle }); setNotice(''); setView('editor'); }
@@ -72,8 +65,14 @@ function App() {
     finally { setReportAction(null); }
   }
   function createBlock() { window.dispatchEvent(new Event('content-library:open-form')); }
-  const nav = <nav aria-label="Main navigation" className="flex w-full items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-5 py-3 sm:px-8 [&>*]:shrink-0 [&_button]:whitespace-nowrap"><div className="mr-4 flex items-center gap-1 text-lg font-semibold tracking-tight text-zinc-950">LD<span>•</span></div><button className={view === 'reports' ? 'rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950' : 'rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950'} onClick={() => setView('reports')}>Reports</button><button className={view === 'library' ? 'rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950' : 'rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950'} onClick={() => setView('library')}>Content library</button><button className="ml-auto rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950" onClick={() => { localStorage.removeItem('ld_token'); setToken(''); }}>Sign out</button></nav>;
-  if (!token) return <Auth onAuth={setToken} />; if (!data) return <p className="p-12 text-sm text-zinc-500">Loading your workspace…</p>;
+  const nav = <nav aria-label="Main navigation" className="flex w-full items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-5 py-3 sm:px-8 [&>*]:shrink-0 [&_button]:whitespace-nowrap"><div className="mr-4 flex items-center gap-1 text-lg font-semibold tracking-tight text-zinc-950">LD<span>•</span></div><button className="rounded-lg px-3 py-2 text-sm" aria-current={view === 'groups' ? 'page' : undefined} onClick={() => setView('groups')}>Groups</button><button className="rounded-lg px-3 py-2 text-sm" onClick={() => setView('member')}>My forms &amp; shared reports</button><button className={view === 'reports' ? 'rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950' : 'rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950'} onClick={() => setView('reports')}>Reports</button><button className={view === 'library' ? 'rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950' : 'rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950'} onClick={() => setView('library')}>Content library</button><button className="ml-auto rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950" onClick={signOut}>Sign out</button></nav>;
+  if (invite) return <InvitationAcceptance invitationToken={invite} onJoined={newToken => { localStorage.setItem('ld_token', newToken); setToken(newToken); setData(null); setUser(null); history.replaceState(null, '', location.pathname + location.search); setInvite(''); setView('member'); }} />;
+  if (!token) return <Auth onAuth={setToken} />;
+  if (!user || (user.role === 'CONSULTANT' && !data)) return <main className="p-12"><p>{notice || 'Loading your workspace…'}</p><button onClick={signOut}>Return to sign in</button></main>;
+  if (user.role === 'MEMBER') return <><nav aria-label="Main navigation" className="flex justify-between border-b p-5"><strong>Leadership DNA</strong><button onClick={signOut}>Sign out</button></nav><MemberDashboard token={token} name={user.name} /></>;
+  if (view === 'groups') return <>{nav}<Groups token={token} /></>;
+  if (view === 'member') return <>{nav}<MemberDashboard token={token} name={user.name} /></>;
+  if (!data) return null;
   if (view === 'editor' && report) return <div className="min-h-screen">{nav}<main className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-8 sm:py-12"><header className="mb-8 flex flex-wrap items-center justify-between gap-4"><button className="inline-flex py-2 text-sm font-medium text-zinc-600 underline-offset-4 hover:text-zinc-950 hover:underline" onClick={() => { setView('reports'); load(); }}>← All reports</button><input className="min-w-0 w-full rounded-lg border-transparent bg-transparent px-0 text-2xl font-semibold tracking-tight sm:w-auto" aria-label="Report name" value={report.title} onChange={e => editReport({ title: e.target.value })}/><div className="flex flex-wrap gap-2"><button className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100" disabled={!!reportAction} onClick={saveReport}>{reportAction === 'saving' ? 'Saving…' : 'Save'}</button><button type="button" className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50" disabled={!!reportAction} onClick={deleteReport}>{reportAction === 'deleting' ? 'Deleting…' : 'Delete'}</button></div></header>{notice && <p className="mb-6 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">{notice}</p>}<ReportEditor key={report.id} report={report} library={data.blocks} onChange={editReport} /></main></div>;
   return <div className="min-h-screen">{nav}<main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12"><header className="mb-8 flex flex-wrap items-center justify-between gap-4"><div><p className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">WORKSPACE</p><h1>{view === 'reports' ? 'Your reports' : 'Content library'}</h1></div>{view === 'reports' && <button className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700" onClick={newReport}>+ New report</button>}{view === 'library' && <button className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700" onClick={createBlock}>+ Add new content block</button>}</header>{view === 'reports' && <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{data.reports.map(r => <article className="min-w-0" key={r.id}><button className="flex h-48 w-full min-w-0 flex-col items-start rounded-xl border border-zinc-200 bg-white p-6 text-left transition hover:border-zinc-400 hover:shadow-sm " key={r.id} onClick={() => openReport(r.id)}><h2 className="my-3 line-clamp-2 w-full break-words text-left" title={r.title}>{r.title}</h2><p className="mt-auto">Open report</p></button></article>)}{!data.reports.length && <div className="col-span-full rounded-xl border border-dashed border-zinc-300 px-6 py-16 text-center text-sm text-zinc-500">No reports yet. Create your first one to begin.</div>}</section>}{view === 'library' && <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{data.blocks.map(b => <article className="content-card min-w-0 cursor-pointer rounded-xl border border-zinc-200 bg-white p-6 text-left transition hover:border-zinc-400 hover:shadow-sm [&_h2]:my-3 [&_h2]:break-words" data-block-id={b.id} key={b.id}><small>{b.category}</small><h2>{b.title}</h2><p>Reusable report content</p></article>)}</section>}</main></div>;
 }

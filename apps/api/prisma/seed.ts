@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 const paragraph = (text: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
 async function main() {
+  if (process.env.NODE_ENV === 'production') throw new Error('Demo seeding is disabled in production');
   // Seed only a new demo account so deleted starter blocks stay deleted on restart.
   if (await prisma.user.findUnique({ where: { email: 'demo@leadershipdna.com' } })) return;
   const passwordHash = await bcrypt.hash('welcome123', 12);

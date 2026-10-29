@@ -18,9 +18,11 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
+      NODE_ENV: development
+      SEED_DEMO: "true"
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/leadership_dna?schema=public
       JWT_SECRET: ${JWT_SECRET:-development-only-secret}
-      WEB_ORIGIN: http://localhost:${APP_PORT:-8080}
+      APP_ORIGIN: http://localhost:${APP_PORT:-8080}
       PORT: 4000
     depends_on:
       db:
